@@ -29,13 +29,11 @@ with st.expander("📖 Instructions & Features"):
         
         1.3 sellout_past30D.xlsx
         
-        1.4 Vendor 101317 OEM HBA,Nine_Stock&Pending Order.xlsb
+        1.4 data_from_access.xlsx
+
+        1.5 Summary Forecast.xlsx
         
-        1.5 data_from_access.xlsx
-    
-        1.6 Summary Forecast.xlsx
-        
-        1.7 1.Master_LeadTime.xlsx
+        1.6 1.Master_LeadTime.xlsx
                 
     2. **Click the "Generate Daily Stock Report" button to process the data.**
                 
@@ -54,16 +52,13 @@ dc_stock_file = st.file_uploader("File Name => DC_End..-..-2025", type=['xlsx'],
 st.subheader("Step 3: 📂 Upload last 30 days sales File")
 sellout_file = st.file_uploader("File Name => sellout_past30D", type=['xlsx'], key="sellout")
 
-st.subheader("Step 4: 📂 Upload PO Pending HBA & NINE")
-po_hba_file = st.file_uploader("File Name => Vendor 101317 OEM HBA,Nine_Stock&Pending Order", type=['xlsb'], key="po_hba")
-
-st.subheader("Step 5: 📂 Upload Master Product & PO Pending Foods / NF / Import-Local File")
+st.subheader("Step 4: 📂 Upload Master Product & PO Pending Foods / NF / Import-Local File")
 access_db_extracted_file = st.file_uploader("File Name => data_from_access", type=['xlsx'], key="extract_access_db")
 
-st.subheader("Step 6: 📂 Upload PO Pending Import-Foods/NF - Overseas")
-po_import_excel_file = st.file_uploader("File Name => Summary Forecast", type=['xlsx'], key="po_import")
+st.subheader("Step 5: 📂 Upload PO Pending Import-Foods/NF - Overseas")
+po_import_overseas = st.file_uploader("File Name => Summary Forecast", type=['xlsx'], key="po_import")
 
-st.subheader("Step 7: 📂 Upload Master Lead Time File")
+st.subheader("Step 6: 📂 Upload Master Lead Time File")
 master_leadtime_file = st.file_uploader("File Name => 1.Master_LeadTime", type=['xlsx'], key="leadtime")
 
 
@@ -167,7 +162,9 @@ def process_sellout_data(sellout_file):
     
     return merged_pivot
 
-def process_po_hba(po_hba_file):
+
+# Hold this data HBA
+#def process_po_hba(po_hba_file):
     """Process PO HBA data"""
     df = pd.read_excel(po_hba_file, sheet_name='PendingPO', header=0)
     df.columns = df.columns.str.strip()
@@ -263,10 +260,10 @@ def process_all_data_from_access(excel_data):
         datasets['product_list'] = pd.read_excel(excel_data, sheet_name='Master_Product')
         st.success("Loaded 'Master_Product' sheet")
 
-        datasets['po_foods_nf'] = pd.read_excel(excel_data, sheet_name='Pending_Foods&NF')
+        datasets['po_foods_nf_pcb'] = pd.read_excel(excel_data, sheet_name='Pending_Foods&NF&PCB')
         st.success("Loaded 'Pending_Foods&NF' sheet")
 
-        datasets['po_import'] = pd.read_excel(excel_data, sheet_name='Pending_Import')
+        datasets['po_import_local'] = pd.read_excel(excel_data, sheet_name='Pending_Import_Local')
         st.success("Loaded 'Pending_Import' sheet")
 
         st.success("All specified sheets loaded successfully!")
@@ -278,12 +275,12 @@ def process_all_data_from_access(excel_data):
 
 
 def process_po_other(excel_datasets):
-    if not excel_datasets or 'po_foods_nf' not in excel_datasets or 'product_list' not in excel_datasets:
+    if not excel_datasets or 'po_foods_nf_pcb' not in excel_datasets or 'product_list' not in excel_datasets:
         st.error("Missing required datasets for PO Foods/NF processing")
         return None
     
     try:
-        df = excel_datasets['po_foods_nf'].copy()
+        df = excel_datasets['po_foods_nf_pcb'].copy()
         df['CJ_Item'] = df['CJ_Item'].astype(str)
         df['Item'] = df['Item'].astype(str)
 
@@ -343,13 +340,13 @@ def process_po_other(excel_datasets):
     
 
 
-def process_po_import(excel_datasets, po_import_excel_file):
-    if not excel_datasets or 'po_import' not in excel_datasets or 'product_list' not in excel_datasets:
+def process_po_import(excel_datasets, ):
+    if not excel_datasets or 'po_import_local' not in excel_datasets or 'product_list' not in excel_datasets:
         st.error("Missing required datasets for PO Import processing")
         return None
      
     try:
-        df = excel_datasets['po_import'].copy()
+        df = excel_datasets['po_import_local'].copy()
         product_data = excel_datasets['product_list'].copy()
         
 
@@ -415,10 +412,11 @@ def process_po_import(excel_datasets, po_import_excel_file):
         merged_df2 = pd.merge(merged_df, pivot_df3, on=['SHM_Item', 'CJ_Item', 'Product Name','PO CJ No.'], how='left')
 
         # Work with PO Pending from Excel file
-        df2 = pd.read_excel(po_import_excel_file, sheet_name='Summary Forecast', header=3)
+        df2 = pd.read_excel(po_import_overseas, sheet_name='vstack', header=0)
         df2['แผนส่งเข้าคลังโพธาราม'] = pd.to_datetime(df2['แผนส่งเข้าคลังโพธาราม'], errors='coerce')
         df2['แผนส่งเข้าคลังบางปะกง'] = pd.to_datetime(df2['แผนส่งเข้าคลังบางปะกง'], errors='coerce')
         df2['แผนส่งเข้าคลังขอนแก่น'] = pd.to_datetime(df2['แผนส่งเข้าคลังขอนแก่น'], errors ='coerce')
+        df2['เรือ ETA'] = pd.to_datetime(df2['เรือ ETA'], errors ='coerce')
         df2['CJ_Item'] = df2['CJ_Item'].astype(str)
     
         today = pd.to_datetime(datetime.now().date())
@@ -503,10 +501,10 @@ def process_leadtime(master_owner_lt_file):
         return None
 
 
-def combine_all_PO_data(hba_df, foods_nf_df, import_po_df, owner_scm_df):
+def combine_all_PO_data(foods_nf_pcb_df, import_po_df, owner_scm_df):
     try:
         # Step 1: Use already processed DataFrames
-        if hba_df is None or foods_nf_df is None or import_po_df is None or owner_scm_df is None:
+        if foods_nf_pcb_df is None or import_po_df is None or owner_scm_df is None:
             st.error("One or more required data sources are missing. Please check your uploads.")
             return None, None
 
@@ -530,7 +528,8 @@ def combine_all_PO_data(hba_df, foods_nf_df, import_po_df, owner_scm_df):
 
     
     # Step 2: Clean each dataframe to a unified format
-    def clean_po_hba(df):
+    # Hold this HBA Data transformation 
+    #def clean_po_hba(df):
         df = df.drop(columns=['DC_Location'])
         df.rename(columns={
             'CJ_Article': 'CJ_Item', 
@@ -548,7 +547,7 @@ def combine_all_PO_data(hba_df, foods_nf_df, import_po_df, owner_scm_df):
         }, inplace=True)
         return df
 
-    def clean_po_foods_nf(df):
+    def clean_po_foods_nf_pcb(df):
         # Exclude unnecessary columns
         df = df.drop(columns=['Devision','Unit','Customer'])
         # Rename Column
@@ -603,12 +602,11 @@ def combine_all_PO_data(hba_df, foods_nf_df, import_po_df, owner_scm_df):
         return final_import
 
     # Clean each dataset
-    hba_clean = clean_po_hba(hba_df)
-    other_clean = clean_po_foods_nf(foods_nf_df) 
+    foods_nf_pcb_clean = clean_po_foods_nf_pcb(foods_nf_pcb_df) 
     import_clean = clean_po_import(import_po_df)
 
     # Step 3: Combine all datasets
-    combined_df = pd.concat([hba_clean, other_clean, import_clean], ignore_index=True)
+    combined_df = pd.concat([foods_nf_pcb_clean, import_clean], ignore_index=True)
     combined_df['CJ_Item'] = combined_df['CJ_Item'].astype(str)
     combined_df['SHM_Item'] = combined_df['SHM_Item'].astype(str)
 
@@ -673,7 +671,7 @@ def convert_cj_item_to_string(dataframes, access_df):
 
 def merge_dataframes(dfs, access_df):
     """Merge All dataframes into a single dataframe"""
-    required_dfs = ['CJ_Stock', 'Daily_Stock_DC', 'Daily_SO', 'PO_HBA', 'PO_Foods_NF', 'PO_Import']
+    required_dfs = ['CJ_Stock', 'Daily_Stock_DC', 'Daily_SO', 'PO_Foods_NF_PCB', 'PO_Import']
     for df_name in required_dfs:
         if df_name not in dfs or dfs[df_name] is None:
             st.error(f"Missing required dataframe: {df_name}. Please check your uploads.")
@@ -683,11 +681,9 @@ def merge_dataframes(dfs, access_df):
 
     merged_df = merged_df.merge(dfs['Daily_SO'], on='CJ_Item', how='left')  
 
-    merged_df = merged_df.merge(dfs['PO_HBA'], on='SHM_Item', how='outer', suffixes = ('','_from-HBA'))
-
     merged_df = merged_df.merge(dfs['PO_Import'], on='SHM_Item', how='outer', suffixes=('', '_from-Import'))
 
-    merged_df = merged_df.merge(dfs['PO_Foods_NF'], on='SHM_Item', how='outer', suffixes=('', '_from-Foods-NF'))  
+    merged_df = merged_df.merge(dfs['PO_Foods_NF_PCB'], on='SHM_Item', how='outer', suffixes=('', '_from-Access'))  
 
     merged_df = merged_df.merge(dfs['Daily_Stock_DC'], on='CJ_Item', how='left', suffixes=('', '_from-DailyDC'))  
 
@@ -725,8 +721,7 @@ def calculate_totals(merged_df):
     for dc in dc_columns:
         merged_df[f'Total-PO_qty_to_DC{dc}'] = (
             merged_df[f'PO_Qty_to_DC{dc}'] +
-            merged_df[f'PO_Qty_to_DC{dc}_from-Import'] + 
-            merged_df[f'PO_Qty_to_DC{dc}_from-Foods-NF'])
+            merged_df[f'PO_Qty_to_DC{dc}_from-Access'])
 
         # Calculate %Ratio with error handling
         merged_df[f'%Ratio_AvgSalesQty90D_DC{dc}'] = (
@@ -788,9 +783,9 @@ def apply_doh_calculations(merged_df):
 
     # Ensure all delivery date columns are datetime
     dc_date_columns = {
-        'DC1': ['Min_del_date_to_DC1', 'Min_del_date_to_DC1_from-Import', 'Min_del_date_to_DC1_from-Foods-NF'],
-        'DC2': ['Min_del_date_to_DC2', 'Min_del_date_to_DC2_from-Import', 'Min_del_date_to_DC2_from-Foods-NF'],
-        'DC4': ['Min_del_date_to_DC4', 'Min_del_date_to_DC4_from-Import', 'Min_del_date_to_DC4_from-Foods-NF']
+        'DC1': ['Min_del_date_to_DC1', 'Min_del_date_to_DC1_from-Access'],
+        'DC2': ['Min_del_date_to_DC2', 'Min_del_date_to_DC2_from-Access'],
+        'DC4': ['Min_del_date_to_DC4', 'Min_del_date_to_DC4_from-Access']
     }
 
     for dc, cols in dc_date_columns.items():
@@ -799,7 +794,7 @@ def apply_doh_calculations(merged_df):
             data_cols = pd.to_datetime(data_cols, errors='coerce')
             data_cols = data_cols.where(~(data_cols.dt.date == pd.Timestamp('1970-01-01').date()), pd.NaT)
 
-            merged_df[col] = data_cols       
+            merged_df[col] = data_cols
 
         # Calculate Min deld ate only if at least one column has a non-null value
         merged_df[f'Min_delivery_date_to_{dc}'] = merged_df[cols].min(axis=1)
@@ -887,7 +882,7 @@ def replace_cj_duplicates(deduplicated_df):
 
 def generate_full_stock_report(
         cj_stock_df, daily_stock_dc_df, daily_so_df,
-        po_hba_df, po_foods_nf_df, po_import_df, master_leadtime_df, excel_datasets):
+        po_foods_nf_pcb_df, po_import_df, master_leadtime_df, excel_datasets):
     
     """Generate the full stock report from processed dataframes"""
     st.header("🔍 Step 1: Validating Input File...")
@@ -895,7 +890,7 @@ def generate_full_stock_report(
     # Validate required inputs
     if any(df is None or df.empty for df in [
         cj_stock_df, daily_stock_dc_df, daily_so_df, 
-        po_hba_df, po_foods_nf_df, po_import_df, master_leadtime_df
+        po_foods_nf_pcb_df, po_import_df, master_leadtime_df
     ]):
         st.error("One or more input DataFrames are missing or empty. Please check your uploads.")
         return None, None
@@ -913,8 +908,7 @@ def generate_full_stock_report(
         'CJ_Stock': cj_stock_df,
         'Daily_Stock_DC': daily_stock_dc_df,
         'Daily_SO': daily_so_df,
-        'PO_HBA': po_hba_df,
-        'PO_Foods_NF': po_foods_nf_df,
+        'PO_Foods_NF_PCB': po_foods_nf_pcb_df,
         'PO_Import': po_import_df
     }
 
@@ -1162,7 +1156,7 @@ if st.button("🚀 Generate Daily Stock Report", type="primary", use_container_w
     # Check required files
     required_files = [
         master_file, dc_stock_file, sellout_file,
-        po_hba_file, access_db_extracted_file, po_import_excel_file, master_leadtime_file
+        access_db_extracted_file, po_import_overseas, master_leadtime_file
     ]
     if all(file is not None for file in required_files):
         with st.spinner("Processing data... This may take a few minutes."):
@@ -1171,63 +1165,55 @@ if st.button("🚀 Generate Daily Stock Report", type="primary", use_container_w
                 status_text = st.empty()
 
                 # ---------------- Step 1: CJ Stock ----------------
-                status_text.text("Step 1/8: Processing CJ Stock data...")
-                progress_bar.progress(12)
+                status_text.text("Step 1/7: Processing CJ Stock data...")
+                progress_bar.progress(14)
                 cj_stock_df = process_cj_stock(master_file)
                 st.success("✅ Step 1: CJ Stock Data File has been completely processed")
 
 
                 # ---------------- Step 2: DC Stock ----------------
-                status_text.text("Step 2/8: Processing DC Stock data...")
-                progress_bar.progress(25)
+                status_text.text("Step 2/7: Processing DC Stock data...")
+                progress_bar.progress(29)
                 dc_stock_df = process_dc_stock(dc_stock_file)
                 st.success("✅ Step 2: DC Stock Data File has been completely processed")
 
 
                 # ---------------- Step 3: Sell-Out ----------------
-                status_text.text("Step 3/8: Processing Daily Sell-Out data...")
-                progress_bar.progress(37)
+                status_text.text("Step 3/7: Processing Daily Sell-Out data...")
+                progress_bar.progress(42)
                 sellout_df = process_sellout_data(sellout_file)
                 st.success("✅ Step 3: Sell out past 30 days has been completely processed")
 
 
-                # ---------------- Step 4: PO HBA ----------------
-                status_text.text("Step 4/8: Processing PO Pending HBA...")
-                progress_bar.progress(50)
-                po_hba_df, po_hba_raw = process_po_hba(po_hba_file)
-                st.success("✅ Step 4: PO pending HBA has been completely processed")
-
-
-                # ---------------- Step 5: PO Foods & NF ----------------
-                status_text.text("Step 5/8: Processing PO Pending Foods and NF...")
-                progress_bar.progress(62)
+                # ---------------- Step 4: PO Foods & NF & PCB ----------------
+                status_text.text("Step 4/7: Processing PO Pending Foods and NF...")
+                progress_bar.progress(57)
                 access_datasets = process_all_data_from_access(access_db_extracted_file)
                 po_other_df, po_other_raw = process_po_other(access_datasets)
-                st.success("✅ Step 5: PO pending Foods and NF has been completely processed")
+                st.success("✅ Step 4: PO pending Foods and NF has been completely processed")
 
 
                 # ---------------- Step 6: PO Import ----------------
-                status_text.text("Step 6/8: Processing PO Pending Import...")
-                progress_bar.progress(75)
-                po_import_df, po_import_raw = process_po_import(access_datasets, po_import_excel_file)
-                st.success("✅ Step 6: PO pending Import has been completely processed")
+                status_text.text("Step 5/7: Processing PO Pending Import...")
+                progress_bar.progress(71)
+                po_import_df, po_import_raw = process_po_import(access_datasets, po_import_overseas)
+                st.success("✅ Step 5: PO pending Import has been completely processed")
 
 
                 # ---------------- Step 7: Lead Time ----------------
-                status_text.text("Step 7/8: Processing Master Lead Time data...")
-                progress_bar.progress(87)
+                status_text.text("Step 6/7: Processing Master Lead Time data...")
+                progress_bar.progress(85)
                 master_leadtime_df = process_leadtime(master_leadtime_file)
-                st.success("✅ Step 7: Master Lead time has been completely processed")
+                st.success("✅ Step 6: Master Lead time has been completely processed")
 
 
                 # ---------------- Step 8: Final Report ----------------
-                status_text.text("Step 8/8: Generating final report...")
-                progress_bar.progress(90)
+                status_text.text("Step 7/7: Generating final report...")
+                progress_bar.progress(95)
                 result_df, modified_df = generate_full_stock_report(
                     cj_stock_df,
                     dc_stock_df,
                     sellout_df,
-                    po_hba_df,
                     po_other_df,
                     po_import_df,
                     master_leadtime_df,
@@ -1236,7 +1222,6 @@ if st.button("🚀 Generate Daily Stock Report", type="primary", use_container_w
 
                 # Combine all PO data
                 final_df, final_df_pivot = combine_all_PO_data(
-                    po_hba_raw, 
                     po_other_raw, 
                     po_import_raw,
                     master_leadtime_df,
