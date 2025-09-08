@@ -261,10 +261,10 @@ def process_all_data_from_access(excel_data):
         st.success("Loaded 'Master_Product' sheet")
 
         datasets['po_foods_nf_pcb'] = pd.read_excel(excel_data, sheet_name='Pending_Foods&NF&PCB')
-        st.success("Loaded 'Pending_Foods&NF' sheet")
+        st.success("Loaded 'Pending_Foods&NF&PCB' sheet")
 
         datasets['po_import_local'] = pd.read_excel(excel_data, sheet_name='Pending_Import_Local')
-        st.success("Loaded 'Pending_Import' sheet")
+        st.success("Loaded 'Pending_Import_Local' sheet")
 
         st.success("All specified sheets loaded successfully!")
         return datasets
@@ -1269,3 +1269,4 @@ st.markdown("""
     Modified by Thanawit.C for generate daily stock report as an Excel file only</p>
 </div>
 """, unsafe_allow_html=True)
+
