@@ -340,7 +340,7 @@ def process_po_other(excel_datasets):
     
 
 
-def process_po_import(excel_datasets, ):
+def process_po_import(excel_datasets, po_import_overseas):
     if not excel_datasets or 'po_import_local' not in excel_datasets or 'product_list' not in excel_datasets:
         st.error("Missing required datasets for PO Import processing")
         return None
@@ -627,10 +627,12 @@ def combine_all_PO_data(foods_nf_pcb_df, import_po_df, owner_scm_df):
 
     # Step 6: Final column ordering
     desired_order = [
-        'Division', 'OwnerSCM', 'CJ_Item', 'SHM_Item', 'Ship to DC',
-        'PO CJ No.', 'PO Date', 'SHM PO No.', 'Supplier Name', 'Product Name',
-        'PC_Cartons', 'PO Cartons', 'PO_Qty', 'เรือ ETA', 'Delivery Date', 'Delivery_Status'
+        'Division', 'OwnerSCM', 'PO Date', 'SHM PO No.', 
+        'Supplier Name', 'SHM_Item', 'CJ_Item', 'Product Name', 
+        'PO CJ No.', 'PC_Cartons', 'Ship to DC', 'PO Cartons', 
+        'PO_Qty', 'เรือ ETA', 'Delivery Date', 'Delivery_Status'
     ]
+    
     # Add missing columns
     for col in desired_order:
         if col not in final_df.columns:
