@@ -52,7 +52,7 @@ dc_stock_file = st.file_uploader("File Name => DC_End..-..-2025", type=['xlsx'],
 st.subheader("Step 3: 📂 Upload last 30 days sales File")
 sellout_file = st.file_uploader("File Name => sellout_past30D", type=['xlsx'], key="sellout")
 
-st.subheader("Step 4: 📂 Upload Master Product & PO Pending Foods / NF / Import-Local File")
+st.subheader("Step 4: 📂 Upload Master Product & PO Pending in Access")
 access_db_extracted_file = st.file_uploader("File Name => data_from_access", type=['xlsx'], key="extract_access_db")
 
 st.subheader("Step 5: 📂 Upload PO Pending Import-Foods/NF - Overseas")
@@ -74,7 +74,6 @@ def process_cj_stock(master_file):
     master_df = master_df[~master_df['Division'].isin(filter_master_file)]
     
     return master_df
-
 
 
 def process_dc_stock(dc_stock_file):
@@ -249,21 +248,21 @@ def process_sellout_data(sellout_file):
     return merged_df, selected_columns
 
 
-def process_all_data_from_access(excel_data):
-    if excel_data is None:
+def process_access_data(data_access_uploaded_file):
+    if data_access_uploaded_file is None:
         st.info("Please upload file named => data_from_access.xlsx")
         return None
 
     try:
         datasets = {}
 
-        datasets['product_list'] = pd.read_excel(excel_data, sheet_name='Master_Product')
+        datasets['product_list'] = pd.read_excel(data_access_uploaded_file, sheet_name='Master_Product')
         st.success("Loaded 'Master_Product' sheet")
 
-        datasets['po_foods_nf_pcb'] = pd.read_excel(excel_data, sheet_name='Pending_Foods&NF&PCB')
+        datasets['po_foods_nf_pcb'] = pd.read_excel(data_access_uploaded_file, sheet_name='Pending_Foods&NF&PCB')
         st.success("Loaded 'Pending_Foods&NF&PCB' sheet")
 
-        datasets['po_import_local'] = pd.read_excel(excel_data, sheet_name='Pending_Import_Local')
+        datasets['po_import_local'] = pd.read_excel(data_access_uploaded_file, sheet_name='Pending_Import_Local')
         st.success("Loaded 'Pending_Import_Local' sheet")
 
         st.success("All specified sheets loaded successfully!")
@@ -274,22 +273,20 @@ def process_all_data_from_access(excel_data):
         return None
 
 
-def process_po_other(excel_datasets):
-    if not excel_datasets or 'po_foods_nf_pcb' not in excel_datasets or 'product_list' not in excel_datasets:
-        st.error("Missing required datasets for PO Foods/NF processing")
+def process_po_in_access(access_datasets):
+    if not access_datasets or 'po_foods_nf_pcb' not in access_datasets or 'product_list' not in access_datasets:
+        st.error("Missing required datasets of PO Foods, NF, and PCB for processing.")
         return None
     
     try:
-        df = excel_datasets['po_foods_nf_pcb'].copy()
-        df['CJ_Item'] = df['CJ_Item'].astype(str)
-        df['Item'] = df['Item'].astype(str)
+        df = access_datasets['po_foods_nf_pcb'].copy()
+        product_data = access_datasets['product_list'].copy()
 
-        
-        product_data = excel_datasets['product_list'].copy()
-        product_data['CJ_Item'] = product_data['CJ_Item'].astype(str)
-        product_data['SHM_Item'] = product_data['SHM_Item'].astype(str)
+        # Ensure string types
+        for col in ['CJ_Item', 'SHM_Item']:
+            df[col] = df[col].astype(str)
+            product_data[col] = product_data[col].astype(str)
 
-        df.rename(columns={'Item': 'SHM_Item'}, inplace=True)
 
         dc_name_mapping = {
             'CJ DC1 ราชบุรี': 'DC1',
@@ -299,6 +296,7 @@ def process_po_other(excel_datasets):
             'DC ขอนแก่น': 'DC4',
             'DC บางวัว 2': 'TD09'
         }
+
         df['DC_Name'] = df['DC_Name'].replace(dc_name_mapping)
 
         df = pd.merge(df, product_data[['CJ_Item', 'SHM_Item', 'PC_Cartons']], on=['CJ_Item', 'SHM_Item'], how='left')
@@ -339,15 +337,14 @@ def process_po_other(excel_datasets):
         return None
     
 
-
-def process_po_import(excel_datasets, po_import_overseas):
-    if not excel_datasets or 'po_import_local' not in excel_datasets or 'product_list' not in excel_datasets:
+def process_po_import(access_datasets, po_import_overseas):
+    if not access_datasets or 'po_import_local' not in access_datasets or 'product_list' not in access_datasets:
         st.error("Missing required datasets for PO Import processing")
         return None
      
     try:
-        df = excel_datasets['po_import_local'].copy()
-        product_data = excel_datasets['product_list'].copy()
+        df = access_datasets['po_import_local'].copy()
+        product_data = access_datasets['product_list'].copy()
         
 
         # Make sure data types matched
@@ -384,12 +381,12 @@ def process_po_import(excel_datasets, po_import_overseas):
 
 
         pivot_df = df.pivot_table(
-            index=['SHM_Item', 'CJ_Item', 'Product Name','PO CJ No.'],
+            index=['SHM_Item', 'CJ_Item', 'Product Name','PO CJ No.', 'PC_Cartons'],
             columns = 'DC_Name',
             values= 'PO_Qty',
             aggfunc='sum'
         ).reset_index()
-        pivot_df.columns = ['SHM_Item', 'CJ_Item', 'Product Name','PO CJ No.'] + [f'PO_Qty_to_{col}' for col in pivot_df.columns[4:]]
+        pivot_df.columns = ['SHM_Item', 'CJ_Item', 'Product Name','PO CJ No.', 'PC_Cartons'] + [f'PO_Qty_to_{col}' for col in pivot_df.columns[5:]]
 
         pivot_df2 = df.pivot_table(
             index=['SHM_Item', 'CJ_Item', 'Product Name','PO CJ No.'],
@@ -411,18 +408,20 @@ def process_po_import(excel_datasets, po_import_overseas):
         merged_df = pd.merge(pivot_df, pivot_df2, on=['SHM_Item', 'CJ_Item', 'Product Name','PO CJ No.'], how='left')
         merged_df2 = pd.merge(merged_df, pivot_df3, on=['SHM_Item', 'CJ_Item', 'Product Name','PO CJ No.'], how='left')
 
-        # Work with PO Pending from Excel file
+        # Work with PO Pending (Import Overseas)
         df2 = pd.read_excel(po_import_overseas, sheet_name='vstack', header=0)
-        df2['แผนส่งเข้าคลังโพธาราม'] = pd.to_datetime(df2['แผนส่งเข้าคลังโพธาราม'], errors='coerce')
-        df2['แผนส่งเข้าคลังบางปะกง'] = pd.to_datetime(df2['แผนส่งเข้าคลังบางปะกง'], errors='coerce')
-        df2['แผนส่งเข้าคลังขอนแก่น'] = pd.to_datetime(df2['แผนส่งเข้าคลังขอนแก่น'], errors ='coerce')
-        df2['เรือ ETA'] = pd.to_datetime(df2['เรือ ETA'], errors ='coerce')
+        for col in ['แผนส่งเข้าคลังโพธาราม', 'แผนส่งเข้าคลังบางปะกง', 'แผนส่งเข้าคลังขอนแก่น', 'เรือ ETA']:
+            df2[col] = pd.to_datetime(df2[col], errors = 'coerce')
         df2['CJ_Item'] = df2['CJ_Item'].astype(str)
+
     
         today = pd.to_datetime(datetime.now().date())
+        df2_filtered = df2[
+            (df2['แผนส่งเข้าคลังโพธาราม'] >= today) |
+            (df2['แผนส่งเข้าคลังบางปะกง'] >= today) |
+            (df2['แผนส่งเข้าคลังขอนแก่น'] >= today)
+        ]
 
-        df2_filtered = df2[(df2['แผนส่งเข้าคลังโพธาราม'] >= today) | (df2['แผนส่งเข้าคลังบางปะกง'] >= today) | (df2['แผนส่งเข้าคลังขอนแก่น'] >= today)]
-    
         selected_columns = df2_filtered[['SHM_Item', 
                                          'CJ_Item', 
                                          'Name', 
@@ -449,9 +448,8 @@ def process_po_import(excel_datasets, po_import_overseas):
         # Finalize the po pedning import
         cleaned_data = pd.merge(selected_columns, product_data[['CJ_Item', 'SHM_Item', 'PC_Cartons']], on=['CJ_Item', 'SHM_Item'], how='left')
 
-        cleaned_data['PO_Qty_to_DC1'] = cleaned_data['cartons_to_DC1'] * cleaned_data['PC_Cartons']
-        cleaned_data['PO_Qty_to_DC2'] = cleaned_data['cartons_to_DC2'] * cleaned_data['PC_Cartons']
-        cleaned_data['PO_Qty_to_DC4'] = cleaned_data['cartons_to_DC4'] * cleaned_data['PC_Cartons']
+        for dc in ['DC1', 'DC2', 'DC4']:
+            cleaned_data[f'PO_Qty_to_{dc}'] = cleaned_data[f'cartons_to_{dc}'] * cleaned_data['PC_Cartons']
 
         existing_po_cj_no = cleaned_data['PO CJ No.'].unique()
         merged_df2_filtered = merged_df2[~merged_df2['PO CJ No.'].isin(existing_po_cj_no)]
@@ -466,7 +464,6 @@ def process_po_import(excel_datasets, po_import_overseas):
             'PO_Qty_to_DC4': 'sum',
             'Date_to_DC4' : 'min'
         }).reset_index()
-
 
         pivot_data.rename(columns={
             'Date_to_DC1': 'Min_del_date_to_DC1',
@@ -489,7 +486,7 @@ def process_leadtime(master_owner_lt_file):
         master_leadtime = master_leadtime[['SHM_Item', 'CJ_Item', 'OwnerSCM', 'Base Lead Time (Days)']]
         master_leadtime.rename(columns={'Base Lead Time (Days)': 'LeadTime'}, inplace=True)
 
-        master_leadtime['CJ_Item'] = master_leadtime['CJ_Item'].astype(str)
+        master_leadtime = master_leadtime.astype({'CJ_Item': str, 'SHM_Item': str})
 
         master_leadtime['CJ_Item'] = master_leadtime['CJ_Item'].fillna('')
         master_leadtime['CJ_Item'] = master_leadtime['CJ_Item'].apply(lambda x: x.split('.')[0] if '.0' in str(x) else x)
@@ -501,62 +498,18 @@ def process_leadtime(master_owner_lt_file):
         return None
 
 
-def combine_all_PO_data(foods_nf_pcb_df, import_po_df, owner_scm_df):
-    try:
-        # Step 1: Use already processed DataFrames
-        if foods_nf_pcb_df is None or import_po_df is None or owner_scm_df is None:
-            st.error("One or more required data sources are missing. Please check your uploads.")
-            return None, None
-
-        # Extract product list
-        access_product_list_df = access_datasets.get('product_list')
-        if access_product_list_df is None:
-            st.error("sheet name 'product_list' not found. Please Check 'Master_Product' sheet.")
-            return None, None
-
-        # Process Lead Time
-        owner_scm_df = process_leadtime(master_leadtime_file)
-        if owner_scm_df is None:
-            st.error("Failed to process Lead Time file.")
-            return None, None
-
-    except Exception as e:
-        st.error(f"❌ Error in Step 1 of combine_all_PO_data: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
-        return None, None
-
-    
-    # Step 2: Clean each dataframe to a unified format
-    # Hold this HBA Data transformation 
-    #def clean_po_hba(df):
-        df = df.drop(columns=['DC_Location'])
-        df.rename(columns={
-            'CJ_Article': 'CJ_Item', 
-            'SHM_Article': 'SHM_Item', 
-            'SHM_PO NO.': 'SHM PO No.',
-            'SHM_PO_Date': 'PO Date', 
-            'CJ_PO NO.': 'PO CJ No.', 
-            'CJ_Description' : 'Product Name',
-            'DC': 'Ship to DC', 
-            'PO Pending': 'PO_Qty', 
-            'PO_Status': 'Delivery_Status',
-            'Next Delivery': 'Delivery Date', 
-            'Supplier_Short_Name': 'Supplier Name',
-            'PendingPO (CTN)': 'PO Cartons',
-        }, inplace=True)
-        return df
+def combine_all_PO_data(po_foods_nf_pcb_df, import_po_df, product_list_df, owner_scm_df):
 
     def clean_po_foods_nf_pcb(df):
+        df['PO Cartons'] = df['PO_Qty'] / df['PC_Cartons']
         # Exclude unnecessary columns
-        df = df.drop(columns=['Devision','Unit','Customer'])
+        df = df.drop(columns=['Devision','Unit','Customer', 'Order Qty'])
         # Rename Column
         df.rename(columns={
             'PO Num': 'SHM PO No.', 
             'PO Ref': 'PO CJ No.', 
             'DC_Name': 'Ship to DC',
             'Rec_Date': 'Delivery Date', 
-            'Order Qty': 'PO Cartons', 
             'CJ_Description':'Product Name'
         },inplace=True)
         return df
@@ -575,8 +528,14 @@ def combine_all_PO_data(foods_nf_pcb_df, import_po_df, owner_scm_df):
         df_unpivoted['PO Cartons'] = df_unpivoted.apply(lambda row: row['value'] if 'cartons' in row['variable'] else None, axis=1)
         df_unpivoted['PO qty'] = df_unpivoted.apply(lambda row: row['value'] if 'PO_Qty' in row['variable'] else None, axis=1)
         df_unpivoted['Date to DC'] = df_unpivoted.apply(lambda row: row['value'] if 'Date' in row['variable'] else None, axis=1)
+
         df_unpivoted.drop(columns=['variable', 'value'], inplace=True)
-        df_unpivoted.dropna(subset=['PO Cartons', 'PO qty', 'Date to DC'], how='all', inplace=True)
+
+        df_unpivoted = df_unpivoted[
+            ~((df_unpivoted['PO Cartons'].fillna(0) == 0) & 
+              (df_unpivoted['PO qty'].fillna(0) == 0) & 
+              (df_unpivoted['Date to DC'].isna()))
+        ]
 
         df_unpivoted.fillna({"เรือ ETA": "Unknown"}, inplace=True) 
         df_unpivoted.fillna({'PC_Cartons': "0"},inplace=True)
@@ -602,19 +561,20 @@ def combine_all_PO_data(foods_nf_pcb_df, import_po_df, owner_scm_df):
         return final_import
 
     # Clean each dataset
-    foods_nf_pcb_clean = clean_po_foods_nf_pcb(foods_nf_pcb_df) 
+    foods_nf_pcb_clean = clean_po_foods_nf_pcb(po_foods_nf_pcb_df) 
     import_clean = clean_po_import(import_po_df)
 
     # Step 3: Combine all datasets
     combined_df = pd.concat([foods_nf_pcb_clean, import_clean], ignore_index=True)
-    combined_df['CJ_Item'] = combined_df['CJ_Item'].astype(str)
-    combined_df['SHM_Item'] = combined_df['SHM_Item'].astype(str)
+    for col in ['SHM_Item', 'CJ_Item']:
+        combined_df[col] = combined_df[col].astype(str)
 
-        
-    # Step 4: Enrich with master product info
-    access_product_list_df['CJ_Item'] = access_product_list_df['CJ_Item'].astype(str)
-    access_product_list_df['SHM_Item'] = access_product_list_df['SHM_Item'].astype(str)
-    merged_df = pd.merge(combined_df, access_product_list_df, on=['CJ_Item', 'SHM_Item'], how='left', suffixes=('', '_access'))
+    product_list_df = product_list_df.copy()
+    for col in ['SHM_Item', 'CJ_Item']:
+        product_list_df[col] = product_list_df[col].astype(str)
+
+
+    merged_df = pd.merge(combined_df, product_list_df, on=['CJ_Item', 'SHM_Item'], how='left', suffixes=('', '_access'))
 
     merged_df['Supplier Name'] = merged_df['Supplier Name'].fillna(merged_df['Supplier Name_access'])
     merged_df['Division'] = merged_df['Devision']
@@ -622,7 +582,8 @@ def combine_all_PO_data(foods_nf_pcb_df, import_po_df, owner_scm_df):
 
     # Step 5: Merge OwnerSCM
     owner_scm_df_selected = owner_scm_df[['SHM_Item', 'CJ_Item', 'OwnerSCM']]
-    owner_scm_df_selected['CJ_Item'] = owner_scm_df_selected['CJ_Item'].fillna('')
+    owner_scm_df_selected['SHM_Item'] = owner_scm_df_selected['SHM_Item'].astype(str)
+    owner_scm_df_selected['CJ_Item'] = owner_scm_df_selected['CJ_Item'].astype(str)
     final_df = pd.merge(merged_df, owner_scm_df_selected, on=['CJ_Item', 'SHM_Item'], how='left')
 
     # Step 6: Final column ordering
@@ -632,7 +593,7 @@ def combine_all_PO_data(foods_nf_pcb_df, import_po_df, owner_scm_df):
         'PO CJ No.', 'PC_Cartons', 'Ship to DC', 'PO Cartons', 
         'PO_Qty', 'เรือ ETA', 'Delivery Date', 'Delivery_Status'
     ]
-    
+
     # Add missing columns
     for col in desired_order:
         if col not in final_df.columns:
@@ -1188,15 +1149,15 @@ if st.button("🚀 Generate Daily Stock Report", type="primary", use_container_w
 
 
                 # ---------------- Step 4: PO Foods & NF & PCB ----------------
-                status_text.text("Step 4/7: Processing PO Pending Foods and NF...")
+                status_text.text("Step 4/7: Processing PO Pending Foods, NF and PCB ...")
                 progress_bar.progress(57)
-                access_datasets = process_all_data_from_access(access_db_extracted_file)
-                po_other_df, po_other_raw = process_po_other(access_datasets)
+                access_datasets = process_access_data(access_db_extracted_file)
+                po_access_df, po_access_raw = process_po_in_access(access_datasets)
                 st.success("✅ Step 4: PO pending Foods and NF has been completely processed")
 
 
                 # ---------------- Step 6: PO Import ----------------
-                status_text.text("Step 5/7: Processing PO Pending Import...")
+                status_text.text("Step 5/7: Processing PO Pending Import Overseas ...")
                 progress_bar.progress(71)
                 po_import_df, po_import_raw = process_po_import(access_datasets, po_import_overseas)
                 st.success("✅ Step 5: PO pending Import has been completely processed")
@@ -1216,7 +1177,7 @@ if st.button("🚀 Generate Daily Stock Report", type="primary", use_container_w
                     cj_stock_df,
                     dc_stock_df,
                     sellout_df,
-                    po_other_df,
+                    po_access_df,
                     po_import_df,
                     master_leadtime_df,
                     access_datasets
@@ -1224,9 +1185,10 @@ if st.button("🚀 Generate Daily Stock Report", type="primary", use_container_w
 
                 # Combine all PO data
                 final_df, final_df_pivot = combine_all_PO_data(
-                    po_other_raw, 
+                    po_access_raw, 
                     po_import_raw,
-                    master_leadtime_df,
+                    access_datasets['product_list'],
+                    master_leadtime_df
                 )
 
                 # Prepare data for export
@@ -1269,4 +1231,3 @@ st.markdown("""
     Modified by Thanawit.C for generate daily stock report as an Excel file only</p>
 </div>
 """, unsafe_allow_html=True)
-
