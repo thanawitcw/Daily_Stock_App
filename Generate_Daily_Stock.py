@@ -481,8 +481,7 @@ def calculate_totals(merged_df):
     dc_columns = [1, 2, 4]
     for dc in dc_columns:
         merged_df[f'Total-PO_qty_to_DC{dc}'] = (
-            merged_df[f'PO_Qty_to_DC{dc}'] +
-            merged_df[f'PO_Qty_to_DC{dc}_from-Access'])
+            merged_df[f'PO_Qty_to_DC{dc}'])
 
         # Calculate %Ratio with error handling
         merged_df[f'%Ratio_AvgSalesQty90D_DC{dc}'] = (
@@ -1019,3 +1018,4 @@ st.markdown("""
     Modified by Thanawit.C for generate daily stock report as an Excel file only</p>
 </div>
 """, unsafe_allow_html=True)
+
