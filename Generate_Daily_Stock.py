@@ -508,9 +508,12 @@ def calculate_totals(merged_df):
 
 # Simplify DOH calculation
 def calculate_DOH(stock_qty, avg_qty):
+    # Deal with AVG = null
+    avg_qty_clean = np.where(pd.isnull(avg_qty), 0, avg_qty)
+
     return np.where(
-        (stock_qty > 0) & (avg_qty == 0), 365,
-        np.where((stock_qty == 0) & (avg_qty == 0), 0, stock_qty / avg_qty)
+        (stock_qty != 0) & (avg_qty_clean == 0), 365,
+        np.where((stock_qty == 0) & (avg_qty_clean == 0), 0, stock_qty / avg_qty_clean)
     )
 
 # Simplified DOH calculations for various stock locations
@@ -1076,3 +1079,4 @@ st.markdown("""
     Modified by Thanawit.C for generate daily stock report as an Excel file only</p>
 </div>
 """, unsafe_allow_html=True)
+
