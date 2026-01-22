@@ -513,6 +513,7 @@ def calculate_DOH(stock_qty, avg_qty):
         np.where((stock_qty == 0) & (avg_qty == 0), 0, stock_qty / avg_qty)
     )
 
+# Simplified DOH calculations for various stock locations
 def apply_doh_calculations(merged_df):
     dc_list = ['DC1', 'DC2', 'DC4']
     max_doh_value = 1825
@@ -524,10 +525,6 @@ def apply_doh_calculations(merged_df):
             merged_df[f'{dc}_Remain_StockQty'],
             merged_df[f'{dc}_AvgSaleQty90D']
         )
-        merged_df[f'{dc}_DOH(Stock+PO)'] = calculate_DOH(
-            merged_df[f'{dc}_Remain_StockQty'] + merged_df[f'Total-PO_qty_to_{dc}'],
-            merged_df[f'{dc}_AvgSaleQty90D']
-        )
 
     # Special columns for all DCs
     merged_df['Current_DOH_All_DC'] = calculate_DOH(
@@ -535,11 +532,6 @@ def apply_doh_calculations(merged_df):
         merged_df['Total_AvgSaleQty90D']
     )
     merged_df['Total-PO_qty_to_DC'] = merged_df[[f'Total-PO_qty_to_{dc}' for dc in dc_list]].sum(axis=1)
-
-    merged_df['Current_DOH(Stock+PO)_All_DC'] = calculate_DOH(
-        merged_df['Remain_StockQty_AllDC'] + merged_df['Total-PO_qty_to_DC'],
-        merged_df['Total_AvgSaleQty90D']
-    )
 
     # Ensure all delivery date columns are datetime
     dc_date_columns = {
@@ -554,31 +546,92 @@ def apply_doh_calculations(merged_df):
             data_cols = pd.to_datetime(data_cols, errors='coerce')
             data_cols = data_cols.where(~(data_cols.dt.date == pd.Timestamp('1970-01-01').date()), pd.NaT)
 
-            merged_df[col] = data_cols
+            merged_df[col] = data_cols       
 
-        # Calculate Min deld ate only if at least one column has a non-null value
+        # Calculate Min delivery ate only if at least one column has a non-null value
         merged_df[f'Min_delivery_date_to_{dc}'] = merged_df[cols].min(axis=1)
 
     merged_df['Min_delivery_date_to_DC'] = merged_df[[f'Min_delivery_date_to_{dc}' for dc in dc_list]].min(axis=1)
 
-    # Cap DOH values
-    doh_columns = [
-        'Current_DOH_All_DC', 'Current_DOH(Stock+PO)_All_DC'
-    ] + [f'Current_{dc}_DOH' for dc in dc_list] + [f'{dc}_DOH(Stock+PO)' for dc in dc_list]
 
+    # Cap DOH values
+    doh_columns = ['Current_DOH_All_DC'] + [f'Current_{dc}_DOH' for dc in dc_list] 
     for col in doh_columns:
         merged_df[col] = np.where(merged_df[col] > max_doh_value, np.inf, merged_df[col])
 
+
     # Initialize cover date columns
     cover_date_cols = [
-        'Total_Store_cover_to_date', 'Stock_All_DC_Cover_to_date', 'Stock+PO_All_DC_Cover_to_date'
-    ] + [f'{prefix}_{dc}_cover_to_date' for dc in dc_list for prefix in ['Store', 'Stock', 'Stock+PO']]
+        'Total_Store_cover_to_date', 'Stock_All_DC_Cover_to_date'] + [f'{prefix}_{dc}_cover_to_date' for dc in dc_list for prefix in ['Store', 'Stock', 'Stock+PO']]
 
     for col in cover_date_cols:
         merged_df[col] = pd.NaT
 
     return merged_df, current_date, max_doh_value
 
+
+
+# Function for calculating DOH past delivery date (deal with DC Cover date < Min Delivery Date)
+def apply_doh_past_delivery_date(merged_df, current_date, max_doh_value):
+    dc_list = ['DC1', 'DC2', 'DC4']
+
+    for dc in dc_list:
+        # initialize the column
+        merged_df[f'{dc}_DOH(Stock+PO)'] = 0.0
+
+        for index, row in merged_df.iterrows():
+            min_delivery_date = row[f'Min_delivery_date_to_{dc}']
+            cover_date = row[f'Stock_{dc}_cover_to_date']
+
+            # Check in min del date > DC cover date
+            if pd.notnull(min_delivery_date) and pd.notnull(cover_date) and min_delivery_date > cover_date:
+                # if TRUE then calculat the PO Qty only
+                doh_value = calculate_DOH(
+                    row[f'Total-PO_qty_to_{dc}'],
+                    row[f'{dc}_AvgSaleQty90D']
+                )
+            else:
+                # use the same logic as before
+                doh_value = calculate_DOH(
+                    row[f'{dc}_Remain_StockQty'] + row[f'Total-PO_qty_to_{dc}'],
+                    row[f'{dc}_AvgSaleQty90D']
+                )
+            merged_df.at[index, f'{dc}_DOH(Stock+PO)'] = doh_value
+
+    # Calculate for all DCs
+    merged_df['Current_DOH(Stock+PO)_All_DC'] = 0.0 
+    for index, row in merged_df.iterrows():
+        min_delivery_date = row['Min_delivery_date_to_DC']
+        cover_date = row['Stock_All_DC_Cover_to_date']
+        
+        if pd.notnull(min_delivery_date) and pd.notnull(cover_date) and min_delivery_date > cover_date:
+            doh_value = calculate_DOH(
+                row['Total-PO_qty_to_DC'],
+                row['Total_AvgSaleQty90D']
+            )
+        else:
+            doh_value = calculate_DOH(
+                row['Remain_StockQty_AllDC'] + row['Total-PO_qty_to_DC'],
+                row['Total_AvgSaleQty90D']
+            )
+        merged_df.at[index, 'Current_DOH(Stock+PO)_All_DC'] = doh_value
+
+    # Cap DOH(Stock+PO) with MAX DOH value
+    for dc in dc_list:
+        merged_df[f'{dc}_DOH(Stock+PO)'] = np.where(
+            merged_df[f'{dc}_DOH(Stock+PO)'] > max_doh_value,
+            np.inf,
+            merged_df[f'{dc}_DOH(Stock+PO)']
+        )
+    
+    # Cap All DC DOH(Stock+PO)
+    merged_df['Current_DOH(Stock+PO)_All_DC'] = np.where(
+        merged_df['Current_DOH(Stock+PO)_All_DC'] > max_doh_value,
+        np.inf,
+        merged_df['Current_DOH(Stock+PO)_All_DC']
+    )
+    
+    return merged_df
 
 # Cover date calculation function
 def apply_cover_date_calculations(merged_df, current_date, max_doh_value):
@@ -602,6 +655,8 @@ def apply_cover_date_calculations(merged_df, current_date, max_doh_value):
 
     for index, row in merged_df.iterrows():
         for target_col, source_col in cover_date_map.items():
+            if source_col not in merged_df.columns:
+                continue
             doh_value = row[source_col]
             if valid_doh_to_date(doh_value):
                 merged_df.at[index, target_col] = current_date + pd.to_timedelta(doh_value, unit='d')
@@ -699,6 +754,9 @@ def generate_full_stock_report(
 
         merged_df, current_date, max_doh_value = apply_doh_calculations(merged_df)
         merged_df = apply_cover_date_calculations(merged_df, current_date, max_doh_value)
+        merged_df = apply_doh_past_delivery_date(merged_df, current_date, max_doh_value)
+        merged_df = apply_cover_date_calculations(merged_df, current_date, max_doh_value)
+
 
         st.success("✅ Transforming data completed.")
 
@@ -1018,4 +1076,3 @@ st.markdown("""
     Modified by Thanawit.C for generate daily stock report as an Excel file only</p>
 </div>
 """, unsafe_allow_html=True)
-
