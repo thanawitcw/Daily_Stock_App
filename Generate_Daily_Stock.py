@@ -157,92 +157,6 @@ def process_sellout_data(sellout_file):
     return merged_pivot
 
 
-# Hold this data HBA
-#def process_po_hba(po_hba_file):
-    """Process PO HBA data"""
-    df = pd.read_excel(po_hba_file, sheet_name='PendingPO', header=0)
-    df.columns = df.columns.str.strip()
-    
-    selected_columns = df[['CJ_Article', 
-                           'SHM_Article', 
-                           'SHM_PO NO.', 
-                           'CJ_PO Date',
-                           'CJ_PO NO.', 
-                           'CJ_Description', 
-                           'DC_Location', 
-                           'PO Pending',
-                           'PO_Status', 
-                           'Next Delivery', 
-                           'Supplier_Short_Name']]
-    
-    selected_columns.rename(columns={'CJ_PO Date': 'SHM_PO_Date'}, inplace=True)
-    date_cols_to_convert = ['SHM_PO_Date', 'Next Delivery']
-    for col in date_cols_to_convert:
-        if col in selected_columns:
-            selected_columns[col] = pd.to_numeric(selected_columns[col], errors = 'coerce')
-            selected_columns[col] = pd.to_datetime(selected_columns[col], origin = '1899-12-30', unit = 'D', errors='coerce')
-
-    selected_columns = selected_columns[selected_columns['PO_Status'].str.strip().str.lower() == 'pending']
-    selected_columns = selected_columns[selected_columns['CJ_Article'].notna() & (~selected_columns['CJ_Article'].isin(['Tester', 'New']))]
-    
-    selected_columns['CJ_Article'] = selected_columns['CJ_Article'].astype(str)
-    selected_columns['CJ_Article'] = selected_columns['CJ_Article'].apply(lambda x: x.rstrip('0').rstrip('.') if '.' in x else x)
-    selected_columns['SHM_Article'] = selected_columns['SHM_Article'].astype(str)
-    
-
-    selected_columns.loc[:, 'DC'] = selected_columns['DC_Location'].map({
-        'D001': 'DC1', 
-        'D002': 'DC2', 
-        'D004': 'DC4',
-        'TD09': 'TD09'
-    })
-    
-    df2 = pd.read_excel(po_hba_file, sheet_name='Supply Record', header=0)
-    selected_df2 = df2[['SHM_Article', 'Unit_PC/CAR']]
-    selected_df2.rename(columns={'Unit_PC/CAR': 'PC_Cartons'}, inplace=True)
-    selected_df2['SHM_Article'] = selected_df2['SHM_Article'].astype(str)
-    
-    selected_columns = pd.merge(selected_columns, selected_df2, on='SHM_Article', how='left')
-
-    selected_columns.loc[:, 'PendingPO (CTN)'] = selected_columns['PO Pending'] / selected_columns['PC_Cartons']
-    selected_columns.loc[:, 'PendingPO (CTN)'] = selected_columns['PendingPO (CTN)'].round(0).astype(int)
-    
-    pivoted_df = selected_columns.pivot_table(
-        index=['CJ_Article', 'SHM_Article'], 
-        columns=['DC'], 
-        values='PO Pending', 
-        aggfunc='sum', 
-        fill_value=0
-        ).reset_index()
-    
-    pivoted_df.columns = ['CJ_Item', 'SHM_Item'] + [f'PO_Qty_to_{col}' for col in pivoted_df.columns[2:]]
-    
-    pivoted_min_del_date = selected_columns.pivot_table(
-        index=['CJ_Article', 'SHM_Article'], 
-        columns='DC', 
-        values='Next Delivery', 
-        aggfunc='min'
-        ).reset_index()
-    
-    pivoted_min_del_date.columns = ['CJ_Item', 'SHM_Item'] + [f'Min_del_date_to_{col}' for col in pivoted_min_del_date.columns[2:]]
-    
-    merged_df = pd.merge(pivoted_df, pivoted_min_del_date, on=['CJ_Item', 'SHM_Item'], how='left')
-
-    desired_columns = [
-            'CJ_Item', 'SHM_Item',
-            'PO_Qty_to_DC1', 'PO_Qty_to_DC2', 'PO_Qty_to_DC4',
-            'Min_del_date_to_DC1', 'Min_del_date_to_DC2', 'Min_del_date_to_DC4'
-        ]
-    
-    for col in desired_columns:
-            if col not in merged_df.columns:
-                merged_df[col] = 0 if 'PO_Qty' in col else pd.NaT
-
-    merged_df['Min_del_date_to_DC4'] = pd.to_datetime(merged_df['Min_del_date_to_DC4'], errors = 'coerce')
-    
-    return merged_df, selected_columns
-
-
 def process_access_data(data_access_uploaded_file):
     if data_access_uploaded_file is None:
         st.info("Please upload file named => data_from_access.xlsx")
@@ -1079,4 +993,5 @@ st.markdown("""
     Modified by Thanawit.C for generate daily stock report as an Excel file only</p>
 </div>
 """, unsafe_allow_html=True)
+
 
