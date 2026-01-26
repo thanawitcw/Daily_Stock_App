@@ -552,32 +552,76 @@ def apply_doh_past_delivery_date(merged_df, current_date, max_doh_value):
 
 # Cover date calculation function
 def apply_cover_date_calculations(merged_df, current_date, max_doh_value):
-    cover_date_map = {
+    # split the condition to deal with the min del date > cover date
+    normal_case_map = {
         'Total_Store_cover_to_date': 'Total_DOHStore',
         'Stock_All_DC_Cover_to_date': 'Current_DOH_All_DC',
-        'Stock+PO_All_DC_Cover_to_date': 'Current_DOH(Stock+PO)_All_DC',
         'Store_DC1_cover_to_date': 'DC1_DOHStore',
         'Stock_DC1_cover_to_date': 'Current_DC1_DOH',
-        'Stock+PO_DC1_cover_to_date': 'DC1_DOH(Stock+PO)',
         'Store_DC2_cover_to_date': 'DC2_DOHStore',
         'Stock_DC2_cover_to_date': 'Current_DC2_DOH',
-        'Stock+PO_DC2_cover_to_date': 'DC2_DOH(Stock+PO)',
         'Store_DC4_cover_to_date': 'DC4_DOHStore',
         'Stock_DC4_cover_to_date': 'Current_DC4_DOH',
-        'Stock+PO_DC4_cover_to_date': 'DC4_DOH(Stock+PO)'
+    }
+    # check min del date case
+    po_case_map = {
+        'Stock+PO_All_DC_Cover_to_date': {
+            'doh_col': 'Current_DOH(Stock+PO)_All_DC',
+            'min_del_col': 'Min_delivery_date_to_DC',
+            'stock_cover_col': 'Stock_All_DC_Cover_to_date'
+        },
+        'Stock+PO_DC1_cover_to_date': {
+            'doh_col': 'DC1_DOH(Stock+PO)',
+            'min_del_col': 'Min_delivery_date_to_DC1',
+            'stock_cover_col': 'Stock_DC1_cover_to_date'
+        },
+        'Stock+PO_DC2_cover_to_date': {
+            'doh_col': 'DC2_DOH(Stock+PO)',
+            'min_del_col': 'Min_delivery_date_to_DC2',
+            'stock_cover_col': 'Stock_DC2_cover_to_date'
+        },
+        'Stock+PO_DC4_cover_to_date': {
+            'doh_col': 'DC4_DOH(Stock+PO)',
+            'min_del_col': 'Min_delivery_date_to_DC4',
+            'stock_cover_col': 'Stock_DC4_cover_to_date'
+        }
     }
 
     def valid_doh_to_date(doh_value):
         return pd.notnull(doh_value) and doh_value > 0 and not np.isinf(doh_value) and doh_value <= max_doh_value
 
+    # Process case 1
     for index, row in merged_df.iterrows():
-        for target_col, source_col in cover_date_map.items():
+        for target_col, source_col in normal_case_map.items():
             if source_col not in merged_df.columns:
                 continue
             doh_value = row[source_col]
             if valid_doh_to_date(doh_value):
                 merged_df.at[index, target_col] = current_date + pd.to_timedelta(doh_value, unit='d')
 
+    # Process case 2
+    for index, row in merged_df.iterrows():
+        for target_col, config in po_case_map.items():
+            doh_col = config['doh_col']
+            min_del_col = config['min_del_col']
+            stock_cover_col = config['stock_cover_col']
+            
+            if doh_col not in merged_df.columns:
+                continue
+                
+            doh_value = row[doh_col]
+            min_delivery_date = row[min_del_col]
+            stock_cover_date = row[stock_cover_col]
+
+            if valid_doh_to_date(doh_value):
+                # check if min del date > stock cover date
+                if pd.notnull(min_delivery_date) and pd.notnull(stock_cover_date) and min_delivery_date > stock_cover_date:
+                    # apply min del date + DOH
+                    merged_df.at[index, target_col] = min_delivery_date + pd.to_timedelta(doh_value, unit ='d')
+                else:
+                    # use current date + doh
+                    merged_df.at[index, target_col] = current_date + pd.to_timedelta(doh_value, unit='d')
+                    
     return merged_df
 
 
@@ -993,5 +1037,6 @@ st.markdown("""
     Modified by Thanawit.C for generate daily stock report as an Excel file only</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
